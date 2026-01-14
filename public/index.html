@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Performance Review Local App</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="container">
+      <h1>Performance Review Helper</h1>
+      <p class="muted">Local-only: PDFs and data stay on your machine.</p>
+    </header>
+
+    <main class="container grid">
+      <section class="card">
+        <h2>1) Employees</h2>
+        <div class="row">
+          <input id="empName" placeholder="Display name (e.g., Brian Ridgeway)" />
+          <input id="empEmail" placeholder="Email (optional)" />
+          <button id="createEmp">Add</button>
+        </div>
+        <div class="row">
+          <select id="employeeSelect"></select>
+          <button id="refreshEmp" class="secondary">Refresh</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2) Upload a Plan PDF</h2>
+        <p class="muted">The PDF file is stored locally. Only extracted text may be used for AI prompts.</p>
+        <div class="row">
+          <input type="file" id="planPdf" accept="application/pdf" />
+          <button id="uploadPlan">Upload</button>
+        </div>
+        <div class="row">
+          <select id="planSelect"></select>
+          <button id="refreshPlans" class="secondary">Refresh</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3) Activities</h2>
+        <div class="row">
+          <input id="actDate" type="date" />
+          <input id="actSummary" placeholder="What did you do? (impact/outcome)" />
+        </div>
+        <div class="row">
+          <input id="actEvidence" placeholder="Evidence (optional): metrics, emails, tickets, links" />
+        </div>
+        <div class="row">
+          <button id="addActivity">Add activity</button>
+          <button id="refreshActivities" class="secondary">Refresh list</button>
+        </div>
+        <div id="elementsBox" class="elementsBox"></div>
+        <div id="activityList" class="list"></div>
+      </section>
+
+      <section class="card">
+        <h2>4) Generate Progress Review</h2>
+        <div class="row">
+          <label>Start <input id="periodStart" type="date" /></label>
+          <label>End <input id="periodEnd" type="date" /></label>
+        </div>
+        <textarea id="guidance" placeholder="Optional guidance (tone, format, missing context, etc.)"></textarea>
+        <div class="row">
+          <button id="generateReview">Generate</button>
+          <button id="refreshReviews" class="secondary">Refresh saved reviews</button>
+        </div>
+        <div id="reviewOutput" class="output"></div>
+        <div id="reviewsList" class="list"></div>
+      </section>
+    </main>
+
+    <footer class="container muted">
+      <small>Tip: keep <code>data/</code> out of git. Configure OpenAI/Claude in <code>.env</code>.</small>
+    </footer>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
