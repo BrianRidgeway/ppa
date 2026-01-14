@@ -21,7 +21,8 @@ A tiny **local-only** helper app to write performance plan progress reviews.
 ```bash
 npm install
 cp .env.example .env
-# set AI_PROVIDER and the appropriate API key in .env
+# set AI Provider API keys in .env
+cp <path-to-ca-certificates> ./certs/ca-certificates.crt # optional, for custom CA trust
 npm run dev
 ```
 
