@@ -36,6 +36,7 @@
         <div class="row">
           <select id="planSelect"></select>
           <button id="refreshPlans" class="secondary">Refresh</button>
+          <button id="reparseplan" class="secondary">Re-parse Plan</button>
         </div>
       </section>
 
@@ -76,6 +77,25 @@
         </div>
         <div id="reviewOutput" class="output"></div>
         <div id="reviewsList" class="list"></div>
+      </section>
+
+      <section class="card">
+        <h2>6) Final Performance Rating</h2>
+        <p class="muted">Generate a final annual (fiscal year Oct-Sep) performance rating combining all period reviews.</p>
+        <div class="row">
+          <label>Overall Rating (1-5)
+            <select id="targetRating">
+              <option value="5">5 - Exceeds Expectations</option>
+              <option value="4">4 - Fully Successful</option>
+              <option value="3" selected>3 - Fully Successful</option>
+              <option value="2">2 - Minimally Successful</option>
+              <option value="1">1 - Unsatisfactory</option>
+            </select>
+          </label>
+          <button id="generateRating">Generate Final Rating</button>
+          <button id="refreshRatings" class="secondary">Refresh saved ratings</button>
+        </div>
+        <div id="ratingsList" class="list"></div>
       </section>
     </main>
 

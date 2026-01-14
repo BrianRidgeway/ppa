@@ -68,11 +68,12 @@ function confirmModal(message) {
 }
 
 async function api(path, opts = {}) {
+  const { timeout = 120000, ...fetchOpts } = opts; // Default 2 min, allow override
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for long requests like review generation
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
   
   try {
-    const res = await fetch(path, { headers: { "Content-Type": "application/json" }, signal: controller.signal, ...opts });
+    const res = await fetch(path, { headers: { "Content-Type": "application/json" }, signal: controller.signal, ...fetchOpts });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(text || `Request failed: ${res.status}`);
@@ -909,6 +910,112 @@ async function refreshReviews() {
   if (!reviews.length) list.innerHTML = "<div class='muted'>No saved reviews yet.</div>";
 }
 
+async function refreshRatings() {
+  const empId = selectedEmployeeId();
+  const planId = selectedPlanId();
+  const list = $("ratingsList");
+  
+  if (!empId || !planId) {
+    list.innerHTML = "<div class='muted'>No final ratings yet.</div>";
+    return;
+  }
+
+  const ratings = await api(`/api/ratings?employeeId=${encodeURIComponent(empId)}&planId=${encodeURIComponent(planId)}`);
+  
+  // Preserve placeholder if it exists
+  const placeholder = list.querySelector("[data-placeholder]");
+  list.innerHTML = "";
+  if (placeholder) list.appendChild(placeholder);
+  
+  for (const r of ratings) {
+    const div = document.createElement("div");
+    div.className = "item";
+    const ratingColor = r.overallRating >= 4 ? "#4caf50" : r.overallRating === 3 ? "#ffc107" : "#f44336";
+    
+    const details = document.createElement("details");
+    details.style.marginBottom = "8px";
+    
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    summary.style.fontWeight = "600";
+    summary.style.padding = "10px";
+    summary.style.borderRadius = "8px";
+    summary.style.background = ratingColor;
+    summary.style.color = "white";
+    summary.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Fiscal Year ${escapeHtml(r.fiscalYear)}: Rating ${r.overallRating}/5 (Score: ${r.totalScore})</span>
+        <button class="delete-rating-btn" data-rating-id="${r.id}" style="background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-left: 10px;" onclick="event.stopPropagation();">Delete</button>
+      </div>
+    `;
+    details.appendChild(summary);
+    
+    const content = document.createElement("div");
+    content.style.padding = "10px";
+    let contentHtml = `<div class="muted" style="margin-bottom: 8px; font-size: 12px;">Created: ${new Date(r.createdAt).toLocaleString()}</div>`;
+    
+    contentHtml += `<div style="margin-bottom: 12px;"><strong>Element Ratings:</strong>`;
+    for (const er of r.elementRatings) {
+      contentHtml += `<div style="margin: 8px 0; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+        <strong>${escapeHtml(er.title)}</strong> - Rating: ${er.rating}/5 (Score: ${er.score})<br>
+        <em style="font-size: 13px;">${escapeHtml(er.summary)}</em>
+      </div>`;
+    }
+    contentHtml += `</div>`;
+    
+    if (r.narrativeSummary) {
+      contentHtml += `<div style="margin-bottom: 12px; padding: 10px; background: #f0f8ff; border-left: 4px solid #2196f3; border-radius: 4px;">
+        <strong style="color: #1976d2;">Summary Rating Narrative</strong>
+        <div style="margin-top: 8px; font-family: Georgia, serif; line-height: 1.6; color: #333;">${markdownToHtml(r.narrativeSummary)}</div>
+      </div>`;
+    }
+    
+    contentHtml += `<div class="output" style="font-family: Georgia, serif; line-height: 1.6;">${markdownToHtml(r.outputMarkdown)}</div>`;
+    
+    content.innerHTML = contentHtml;
+    details.appendChild(content);
+    
+    div.appendChild(details);
+    list.appendChild(div);
+  }
+  
+  if (!ratings.length) list.innerHTML = "<div class='muted'>No final ratings yet.</div>";
+  
+  // Add event listeners for delete buttons
+  list.querySelectorAll(".delete-rating-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const ratingId = btn.getAttribute("data-rating-id");
+      if (!confirmModal(`Delete this final rating? This cannot be undone.`)) return;
+      try {
+        await api(`/api/ratings/${ratingId}`, { method: "DELETE" });
+        showNotification("Rating deleted.", "success");
+        await refreshRatings();
+      } catch (e) {
+        showNotification(`Failed to delete rating: ${e}`, "error");
+      }
+    });
+  });
+}
+
+async function reparseCurrentPlan() {
+  const planId = selectedPlanId();
+  if (!planId) {
+    showNotification("Select a plan first.", "error");
+    return;
+  }
+
+  try {
+    showNotification("Re-parsing plan...", "info");
+    const plan = await api(`/api/plans/${planId}/reparse`, { method: "POST" });
+    showNotification("Plan re-parsed successfully.", "success");
+    await refreshPlanElementsUI();
+  } catch (e) {
+    console.error("Error re-parsing plan:", e);
+    showNotification(`Error re-parsing plan: ${e.message}`, "error");
+  }
+}
+
 $("createEmp").addEventListener("click", async () => {
   const displayName = $("empName").value.trim();
   const email = $("empEmail").value.trim();
@@ -923,6 +1030,7 @@ $("createEmp").addEventListener("click", async () => {
 
 $("refreshEmp").addEventListener("click", refreshEmployees);
 $("refreshPlans").addEventListener("click", refreshPlans);
+$("reparseplan").addEventListener("click", reparseCurrentPlan);
 $("refreshActivities").addEventListener("click", refreshActivities);
 $("refreshReviews").addEventListener("click", refreshReviews);
 
@@ -938,6 +1046,7 @@ $("planSelect").addEventListener("change", async () => {
   await addDeletePlanButton();
   await refreshActivities();
   await refreshReviews();
+  await refreshRatings();
 });
 
 $("uploadPlan").addEventListener("click", async () => {
@@ -1074,6 +1183,65 @@ function populateMonthSelector() {
   }
 }
 
+$("generateRating").addEventListener("click", async () => {
+  const empId = selectedEmployeeId();
+  const planId = selectedPlanId();
+  if (!empId || !planId) return showNotification("Select employee and plan.", "error");
+
+  const targetRating = parseInt($("targetRating").value, 10);
+  const btn = $("generateRating");
+  btn.disabled = true;
+
+  // Add placeholder generating rating
+  const list = $("ratingsList");
+  const placeholder = document.createElement("div");
+  placeholder.className = "item";
+  placeholder.setAttribute("data-placeholder", "true");
+  placeholder.style.background = "#fffde7";
+  placeholder.style.borderLeft = "4px solid #fbc02d";
+  placeholder.innerHTML = `
+    <div style="padding: 10px; display: flex; align-items: center; gap: 10px;">
+      <span style="font-weight: 600;">⏳ Generating Final Rating</span>
+      <span style="font-size: 12px; color: #666;">Target: Level ${targetRating}</span>
+    </div>
+  `;
+  list.insertBefore(placeholder, list.firstChild);
+
+  try {
+    const rating = await api("/api/ratings/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId: empId,
+        planId,
+        targetRating,
+        provider: $("aiProvider").value,
+        model: $("aiModel").value
+      }),
+      timeout: 300000 // 5 minute timeout for rating generation
+    });
+
+    showNotification("Final rating generated and saved.", "success");
+    placeholder.remove();
+    await refreshRatings();
+  } catch (e) {
+    const isTimeout = e.name === "AbortError";
+    if (isTimeout) {
+      showNotification("⏱️ Rating generation is taking longer than expected. It may still be processing. Refreshing to check...", "warning");
+      // Wait a few seconds then try refreshing
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      await refreshRatings();
+      if (placeholder && placeholder.parentNode) placeholder.remove();
+    } else {
+      showNotification(`Failed to generate rating: ${e}`, "error");
+      placeholder.remove();
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("refreshRatings").addEventListener("click", refreshRatings);
+
 // Initial load
 (async function init() {
   populateMonthSelector();
@@ -1082,6 +1250,7 @@ function populateMonthSelector() {
   await refreshPlans();
   await refreshActivities();
   await refreshReviews();
+  await refreshRatings();
 
   // Set defaults for period (last 90 days)
   const end = new Date();

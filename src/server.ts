@@ -8,8 +8,8 @@ import { ensureUploadsDir, uploadsDir, readJson, writeJson } from "./lib/storage
 import { extractPdfText } from "./lib/pdf.js";
 import { extractPlanElements } from "./lib/planExtractor.js";
 import { newId } from "./lib/id.js";
-import { Activity, Employee, Plan, PlanElement, ReviewDraft } from "./lib/types.js";
-import { buildReviewPrompt } from "./lib/prompting.js";
+import { Activity, Employee, Plan, PlanElement, ReviewDraft, PerformanceRating } from "./lib/types.js";
+import { buildReviewPrompt, buildFinalRatingPrompt } from "./lib/prompting.js";
 import { runAI } from "./lib/ai/index.js";
 
 const app = express();
@@ -22,6 +22,7 @@ const EmployeesFile = "employees.json";
 const PlansFile = "plans.json";
 const ActivitiesFile = "activities.json";
 const ReviewsFile = "reviews.json";
+const RatingsFile = "ratings.json";
 
 function todayISO(): string {
   return new Date().toISOString();
@@ -38,6 +39,9 @@ async function getActivities(): Promise<Activity[]> {
 }
 async function getReviews(): Promise<ReviewDraft[]> {
   return readJson<ReviewDraft[]>(ReviewsFile, []);
+}
+async function getRatings(): Promise<PerformanceRating[]> {
+  return readJson<PerformanceRating[]>(RatingsFile, []);
 }
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -138,6 +142,27 @@ app.post("/api/plans/upload", upload.single("pdf"), async (req, res) => {
   await writeJson(PlansFile, plans);
 
   res.json(plan);
+});
+
+app.post("/api/plans/:planId/reparse", async (req, res) => {
+  const plans = await getPlans();
+  const idx = plans.findIndex((p) => p.id === req.params.planId);
+  if (idx === -1) return res.status(404).json({ error: "Plan not found" });
+
+  const plan = plans[idx];
+  
+  // Extract text from existing PDF
+  const extractedText = await extractPdfText(plan.pdfPath);
+  
+  // Parse elements with fresh extraction
+  const elements = extractPlanElements(extractedText);
+  
+  // Update plan with new extraction while preserving other fields
+  plans[idx].extractedText = extractedText;
+  plans[idx].elements = elements;
+  await writeJson(PlansFile, plans);
+  
+  res.json(plans[idx]);
 });
 
 app.put("/api/plans/:planId/elements", async (req, res) => {
@@ -366,6 +391,163 @@ app.delete("/api/reviews/:reviewId", async (req, res) => {
   reviews.splice(idx, 1);
   await writeJson(ReviewsFile, reviews);
   res.json({ deleted: true });
+});
+
+app.get("/api/ratings", async (req, res) => {
+  const ratings = await getRatings();
+  const empId = String(req.query.employeeId || "");
+  const planId = String(req.query.planId || "");
+  const filtered = ratings.filter((r) => (!empId || r.employeeId === empId) && (!planId || r.planId === planId));
+  res.json(filtered);
+});
+
+// Final Performance Rating
+app.post("/api/ratings/generate", async (req, res) => {
+  const schema = z.object({
+    employeeId: z.string().min(1),
+    planId: z.string().min(1),
+    targetRating: z.number().min(1).max(5),
+    provider: z.enum(["openai", "anthropic"]).optional(),
+    model: z.string().optional()
+  });
+  const body = schema.parse(req.body);
+
+  const employees = await getEmployees();
+  const plans = await getPlans();
+  const reviews = await getReviews();
+
+  const emp = employees.find((e) => e.id === body.employeeId);
+  if (!emp) return res.status(404).json({ error: "Employee not found" });
+
+  const plan = plans.find((p) => p.id === body.planId);
+  if (!plan) return res.status(404).json({ error: "Plan not found" });
+
+  // Get current fiscal year (Oct-Sep)
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const fiscalYear = now.getMonth() >= 9 ? currentYear + 1 : currentYear;
+
+  // Combine reviews for fiscal year (Oct prev year - Sep current)
+  const octPrevYear = new Date(fiscalYear - 1, 9, 1); // Oct of previous fiscal year
+  const sepCurrentYear = new Date(fiscalYear, 8, 30); // Sep of current fiscal year
+
+  const fiscalReviews = reviews.filter(
+    (r) =>
+      r.employeeId === body.employeeId &&
+      r.planId === body.planId &&
+      new Date(r.periodStart) >= octPrevYear &&
+      new Date(r.periodEnd) <= sepCurrentYear
+  );
+
+  if (fiscalReviews.length === 0) {
+    return res.status(400).json({ error: "No reviews found for this fiscal year" });
+  }
+
+  // Build element data with combined activities
+  const elementData = plan.elements.map((el) => {
+    // Extract activities from reviews for this element
+    const activitiesForElement: string[] = [];
+    for (const review of fiscalReviews) {
+      // Try to extract element section from markdown
+      const elementPattern = new RegExp(`## Critical Element: ${el.title}([\\s\\S]*?)(?=## Critical Element:|$)`, "i");
+      const match = review.outputMarkdown.match(elementPattern);
+      if (match) {
+        const sectionText = match[1];
+        // Extract just the activities (lines with -)
+        const lines = sectionText.split("\n");
+        const activities = lines
+          .filter((l) => l.trim().startsWith("-") && !l.includes("Suggested activities"))
+          .map((l) => l.replace(/^-\s*/, "").trim())
+          .join("\n");
+        if (activities) activitiesForElement.push(activities);
+      }
+    }
+
+    return {
+      id: el.id,
+      title: el.title,
+      weight: el.weight || 10,
+      description: el.description,
+      combinedActivities:
+        activitiesForElement.length > 0
+          ? activitiesForElement.join("\n\n")
+          : "No documented activities for this element during the fiscal year"
+    };
+  });
+
+  const prompt = buildFinalRatingPrompt({
+    employeeName: emp.displayName,
+    fiscalYear: `${fiscalYear - 1}-${fiscalYear}`,
+    elements: elementData,
+    targetRating: body.targetRating
+  });
+
+  const ai = await runAI(prompt, body.provider, body.model);
+
+  // Parse AI output to extract element ratings and narrative
+  const elementRatings: PerformanceRating["elementRatings"] = [];
+  let totalScore = 0;
+
+  for (const el of plan.elements) {
+    const pattern = new RegExp(`## ${el.title}[\\s\\S]*?\\*\\*Rating:\\*\\*\\s*(\\d)[\\s\\S]*?\\*\\*Score:\\*\\*\\s*(\\d+)`, "i");
+    const match = ai.output.match(pattern);
+
+    if (match) {
+      const rating = parseInt(match[1], 10);
+      const score = parseInt(match[2], 10);
+      totalScore += score;
+
+      const summaryMatch = ai.output.match(
+        new RegExp(`## ${el.title}[\\s\\S]*?\\*\\*Summary:\\*\\*\\s*([^\\*]+)`, "i")
+      );
+      const summary = summaryMatch ? summaryMatch[1].trim() : "";
+
+      elementRatings.push({
+        elementId: el.id,
+        title: el.title,
+        rating,
+        score,
+        summary
+      });
+    }
+  }
+
+  // Extract narrative summary
+  const narrativeMatch = ai.output.match(/## Summary Rating Narrative Documentation([\s\S]*?)$/i);
+  const narrativeSummary = narrativeMatch ? narrativeMatch[1].trim() : "";
+
+  const rating: PerformanceRating = {
+    id: newId("rat_"),
+    employeeId: body.employeeId,
+    planId: body.planId,
+    fiscalYear: `${fiscalYear - 1}-${fiscalYear}`,
+    overallRating: body.targetRating,
+    createdAt: todayISO(),
+    promptMeta: {
+      provider: ai.provider,
+      model: ai.model
+    },
+    elementRatings,
+    totalScore,
+    narrativeSummary,
+    outputMarkdown: ai.output
+  };
+
+  const ratings = await getRatings();
+  ratings.push(rating);
+  await writeJson(RatingsFile, ratings);
+
+  res.json(rating);
+});
+
+app.delete("/api/ratings/:ratingId", async (req, res) => {
+  const ratings = await getRatings();
+  const idx = ratings.findIndex((r) => r.id === req.params.ratingId);
+  if (idx === -1) return res.status(404).json({ error: "Rating not found" });
+
+  ratings.splice(idx, 1);
+  await writeJson(RatingsFile, ratings);
+  res.json({ success: true });
 });
 
 // Basic error handler

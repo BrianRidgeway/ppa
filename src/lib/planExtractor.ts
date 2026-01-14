@@ -35,12 +35,12 @@ function parseStructuredElement(lines: string[], startIdx: number): {
 } {
   let i = startIdx;
   
-  // Extract name: between "Critical Element" and "Objective"
+  // Extract name: between "Critical Element" and "Element Weight" or "Objective"
   let name = "";
   i++;
-  while (i < lines.length && !/^Objective/i.test(lines[i])) {
+  while (i < lines.length && !/^Objective/i.test(lines[i]) && !/^Element\s+Weight/i.test(lines[i])) {
     const line = lines[i].trim();
-    if (line && !/^critical\s+element/i.test(line) && !/^select\s+language/i.test(line)) {
+    if (line && !/^critical\s+element/i.test(line) && !/^select\s+language/i.test(line) && !/^Element$/i.test(line)) {
       name = line;
       break;
     }
@@ -51,12 +51,39 @@ function parseStructuredElement(lines: string[], startIdx: number): {
     return { element: null, nextIndex: i };
   }
 
-  // Extract description/objectives: between "Objective" and "Results of Activities"
-  let objectives = "";
+  // Extract weight: look for "Element Weight" or "Weight:" pattern
+  let weight: number | undefined;
+  let j = startIdx + 1;
+  while (j < lines.length && !/^Objective/i.test(lines[j])) {
+    const line = lines[j].trim();
+    
+    // Check for "Element Weight: 15" or "Weight: 15" format
+    let weightMatch = line.match(/(?:Element\s+)?Weight[:\s]*(\d+)/i);
+    if (weightMatch) {
+      weight = parseInt(weightMatch[1], 10);
+      break;
+    }
+    // Check if this line is "Weight:" or "Element Weight" and next line is the number
+    else if (/^Weight\s*:?\s*$/i.test(line) || /^Element\s+Weight\s*:?\s*$/i.test(line)) {
+      if (j + 1 < lines.length) {
+        const nextLine = lines[j + 1].trim();
+        const numMatch = nextLine.match(/^(\d+)$/);
+        if (numMatch) {
+          weight = parseInt(numMatch[1], 10);
+          break;
+        }
+      }
+    }
+    j++;
+  }
+
+  // Advance to Objective section
   while (i < lines.length && !/^Objective/i.test(lines[i])) {
     i++;
   }
-  
+
+  // Extract description/objectives: between "Objective" and "Results of Activities"
+  let objectives = "";
   if (i < lines.length) {
     i++; // Move past "Objective" header
     // Skip "Select Language" if present
@@ -127,6 +154,7 @@ function parseStructuredElement(lines: string[], startIdx: number): {
     id: newId("el_"),
     title: name,
     description: objectives || "",
+    weight: weight,
     resultsOfActivities: resultsOfActivities || undefined,
     metrics: criteria || undefined
   };

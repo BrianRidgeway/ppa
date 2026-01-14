@@ -79,3 +79,90 @@ Do NOT include element descriptions or criteria in output - ONLY the performance
 Do NOT make up activities. Only suggest realistic, specific activities based on the element's expected results and success criteria.
 `;
 }
+
+export function buildFinalRatingPrompt(params: {
+  employeeName: string;
+  fiscalYear: string;
+  elements: Array<{
+    id: string;
+    title: string;
+    weight?: number;
+    description: string;
+    combinedActivities: string;
+  }>;
+  targetRating: number; // 1-5
+}): string {
+  const { employeeName, fiscalYear, elements, targetRating } = params;
+
+  // Calculate target score range
+  let minScore = 100;
+  let maxScore = 199;
+  if (targetRating === 2) {
+    minScore = 200;
+    maxScore = 289;
+  } else if (targetRating === 3) {
+    minScore = 290;
+    maxScore = 379;
+  } else if (targetRating === 4) {
+    minScore = 380;
+    maxScore = 469;
+  } else if (targetRating === 5) {
+    minScore = 470;
+    maxScore = 500;
+  }
+
+  const elementsList = elements.map(e => {
+    const weight = e.weight || 10;
+    return `## ${mdEscape(e.title)} (Weight: ${weight})
+Description: ${mdEscape(e.description)}
+
+Combined Activities Documentation:
+${mdEscape(e.combinedActivities)}`;
+  }).join("\n\n");
+
+  return `TASK: Generate a final performance rating based on combined fiscal year activities.
+
+Employee: ${employeeName}
+Fiscal Year: ${fiscalYear} (October - September)
+Target Overall Rating: ${targetRating}/5
+
+===== CRITICAL ELEMENTS WITH COMBINED ACTIVITIES =====
+${elementsList}
+
+===== RATING INSTRUCTIONS =====
+1. For each critical element, provide:
+   - A professional summary (2-3 sentences) of the employee's performance based on the combined activities
+   - A rating (1-5) that best reflects the documented performance
+2. Element ratings should be distributed such that:
+   - Each element's score = rating × weight
+   - Total score = sum of all element scores
+   - Total score should fall within the target range: ${minScore}-${maxScore} for overall rating ${targetRating}
+3. Higher weights should typically receive higher ratings to optimize for the target overall rating
+4. Ratings should be justified by the documented activities
+
+===== SCORING GUIDE =====
+Overall Rating 5 = Total Score 470-500
+Overall Rating 4 = Total Score 380-469
+Overall Rating 3 = Total Score 290-379
+Overall Rating 2 = Total Score 200-289
+Overall Rating 1 = Total Score 100-199
+
+===== OUTPUT FORMAT =====
+For each element, output:
+
+## <Element Title>
+**Summary:** <2-3 sentence professional summary of performance>
+**Rating:** <1-5>
+**Score:** <rating × weight>
+
+At the end, output:
+**Total Score:** <sum of all scores>
+
+Then provide a comprehensive narrative summary:
+
+## Summary Rating Narrative Documentation
+<4-5 paragraph professional narrative summarizing the employee's overall performance across all critical elements, key achievements, areas of strength, and any areas for growth. Reference specific accomplishments from the documented activities.>
+
+Do not include explanations outside the specified format.
+`;
+}

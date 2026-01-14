@@ -11,6 +11,7 @@ export interface PlanElement {
   id: ID;
   title: string;
   description: string;
+  weight?: number; // Element weight for final rating calculation
   objectives?: string; // Goals/objectives for this critical element
   resultsOfActivities?: string; // Expected results/outcomes of activities
   metrics?: string; // Performance metrics or success criteria
@@ -47,5 +48,28 @@ export interface ReviewDraft {
     model: string;
     truncated?: boolean;
   };
+  outputMarkdown: string;
+}
+
+export interface PerformanceRating {
+  id: ID;
+  employeeId: ID;
+  planId: ID;
+  fiscalYear: string; // e.g., "2025" for Oct 2024 - Sep 2025
+  overallRating: number; // 1-5
+  createdAt: string;
+  promptMeta: {
+    provider: string;
+    model: string;
+  };
+  elementRatings: {
+    elementId: ID;
+    title: string;
+    rating: number; // 1-5
+    score: number; // rating * weight
+    summary: string;
+  }[];
+  totalScore: number;
+  narrativeSummary: string; // Final comprehensive narrative documentation
   outputMarkdown: string;
 }
