@@ -13,22 +13,23 @@ export function getModel(provider: ProviderName): string {
   return process.env.OPENAI_MODEL || "gpt-4.1-mini";
 }
 
-export async function runAI(prompt: string): Promise<{ provider: ProviderName; model: string; output: string; }> {
-  const provider = getProvider();
-  const model = getModel(provider);
+export async function runAI(prompt: string, overrideProvider?: ProviderName, overrideModel?: string): Promise<{ provider: ProviderName; model: string; output: string; truncated: boolean; }> {
+  const provider = overrideProvider || getProvider();
+  const model = overrideModel || getModel(provider);
 
   const maxChars = Number(process.env.MAX_PROMPT_CHARS || "12000");
-  const safePrompt = prompt.length > maxChars ? prompt.slice(0, maxChars) + "\n\n[TRUNCATED]" : prompt;
+  const truncated = prompt.length > maxChars;
+  const safePrompt = truncated ? prompt.slice(0, maxChars) + "\n\n[TRUNCATED]" : prompt;
 
   if (provider === "anthropic") {
     const apiKey = process.env.ANTHROPIC_API_KEY || "";
     if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
     const output = await anthropicChat({ apiKey, model, prompt: safePrompt });
-    return { provider, model, output };
+    return { provider, model, output, truncated };
   }
 
   const apiKey = process.env.OPENAI_API_KEY || "";
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
   const output = await openaiChat({ apiKey, model, prompt: safePrompt });
-  return { provider, model, output };
+  return { provider, model, output, truncated };
 }

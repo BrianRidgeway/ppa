@@ -11,6 +11,9 @@ export interface PlanElement {
   id: ID;
   title: string;
   description: string;
+  objectives?: string; // Goals/objectives for this critical element
+  resultsOfActivities?: string; // Expected results/outcomes of activities
+  metrics?: string; // Performance metrics or success criteria
 }
 
 export interface Plan {
@@ -27,10 +30,8 @@ export interface Activity {
   id: ID;
   employeeId: ID;
   planId: ID;
-  date: string; // YYYY-MM-DD
-  summary: string;
-  evidence?: string;
-  relatedElementIds?: ID[];
+  month: string; // YYYY-MM
+  content: string; // bulk activity notes for the month
   createdAt: string;
 }
 
@@ -44,6 +45,7 @@ export interface ReviewDraft {
   promptMeta: {
     provider: string;
     model: string;
+    truncated?: boolean;
   };
   outputMarkdown: string;
 }

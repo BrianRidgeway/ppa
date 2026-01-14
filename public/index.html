@@ -40,25 +40,34 @@
       </section>
 
       <section class="card">
-        <h2>3) Activities</h2>
+        <h2>3) Plan Elements</h2>
+        <p class="muted">Click on an element name to view its details. Click "Edit" on any metrics field to update it.</p>
+        <div id="elementsBox" class="elementsBox"></div>
+      </section>
+
+      <section class="card">
+        <h2>4) Activities</h2>
+        <p class="muted">Add your activity notes for a month. The AI will parse and use them when generating reviews.</p>
         <div class="row">
           <select id="activityMonth"></select>
         </div>
-        <p class="muted">Paste activity summaries (one per line)</p>
-        <textarea id="activitiesInput" placeholder="Led quarterly planning session&#10;Completed project deployment&#10;Mentored junior team member" style="min-height:120px;"></textarea>
+        <textarea id="activitiesInput" placeholder="Paste all your activity notes for this month here. The AI will parse them when generating your review." style="min-height:120px;"></textarea>
         <div class="row">
-          <button id="addActivities">Add activities</button>
+          <button id="addActivities">Save activities</button>
           <button id="refreshActivities" class="secondary">Refresh list</button>
         </div>
-        <div id="elementsBox" class="elementsBox"></div>
         <div id="activityList" class="list"></div>
       </section>
 
       <section class="card">
-        <h2>4) Generate Progress Review</h2>
+        <h2>5) Generate Progress Review</h2>
         <div class="row">
           <label>Start <input id="periodStart" type="date" /></label>
           <label>End <input id="periodEnd" type="date" /></label>
+        </div>
+        <div class="row">
+          <label>AI Provider <select id="aiProvider"></select></label>
+          <label>Model <select id="aiModel"></select></label>
         </div>
         <textarea id="guidance" placeholder="Optional guidance (tone, format, missing context, etc.)"></textarea>
         <div class="row">
