@@ -186,33 +186,45 @@ $("uploadPlan").addEventListener("click", async () => {
   $("planPdf").value = "";
 });
 
-$("addActivity").addEventListener("click", async () => {
+$("addActivities").addEventListener("click", async () => {
   const empId = selectedEmployeeId();
   const planId = selectedPlanId();
-  const date = $("actDate").value;
-  const summary = $("actSummary").value.trim();
-  const evidence = $("actEvidence").value.trim();
+  const month = $("activityMonth").value;
   if (!empId || !planId) return alert("Select employee and plan.");
-  if (!date) return alert("Pick a date.");
-  if (!summary) return alert("Write a short summary.");
-  const relatedElementIds = selectedElementIds();
+  if (!month) return alert("Pick a month.");
 
-  await api("/api/activities", {
-    method: "POST",
-    body: JSON.stringify({
-      employeeId: empId,
-      planId,
-      date,
-      summary,
-      evidence: evidence || undefined,
-      relatedElementIds: relatedElementIds.length ? relatedElementIds : undefined
-    })
-  });
+  const text = $("activitiesInput").value.trim();
+  if (!text) return alert("Paste some activity summaries first.");
 
-  $("actSummary").value = "";
-  $("actEvidence").value = "";
-  document.querySelectorAll(".elcheck").forEach((x) => (x.checked = false));
-  await refreshActivities();
+  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l);
+  let count = 0;
+
+  for (const summary of lines) {
+    if (!summary) continue;
+
+    try {
+      await api("/api/activities", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeId: empId,
+          planId,
+          date: month,
+          summary
+        })
+      });
+      count++;
+    } catch (e) {
+      console.error(`Failed to add activity: ${summary}`, e);
+    }
+  }
+
+  if (count > 0) {
+    alert(`Added ${count} activit${count === 1 ? "y" : "ies"}.`);
+    $("activitiesInput").value = "";
+    await refreshActivities();
+  } else {
+    alert("No activities were added.");
+  }
 });
 
 $("generateReview").addEventListener("click", async () => {
@@ -247,8 +259,28 @@ $("generateReview").addEventListener("click", async () => {
   }
 });
 
+function populateMonthSelector() {
+  const sel = $("activityMonth");
+  sel.innerHTML = "";
+  
+  for (let i = 0; i < 12; i++) {
+    const date = new Date();
+    date.setMonth(date.getMonth() - i);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const display = `${month}/${String(year).slice(-2)}`;
+    const value = `${year}-${month}`;
+    
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = display;
+    sel.appendChild(opt);
+  }
+}
+
 // Initial load
 (async function init() {
+  populateMonthSelector();
   await refreshEmployees();
   await refreshPlans();
   await refreshActivities();

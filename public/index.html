@@ -42,14 +42,12 @@
       <section class="card">
         <h2>3) Activities</h2>
         <div class="row">
-          <input id="actDate" type="date" />
-          <input id="actSummary" placeholder="What did you do? (impact/outcome)" />
+          <select id="activityMonth"></select>
         </div>
+        <p class="muted">Paste activity summaries (one per line)</p>
+        <textarea id="activitiesInput" placeholder="Led quarterly planning session&#10;Completed project deployment&#10;Mentored junior team member" style="min-height:120px;"></textarea>
         <div class="row">
-          <input id="actEvidence" placeholder="Evidence (optional): metrics, emails, tickets, links" />
-        </div>
-        <div class="row">
-          <button id="addActivity">Add activity</button>
+          <button id="addActivities">Add activities</button>
           <button id="refreshActivities" class="secondary">Refresh list</button>
         </div>
         <div id="elementsBox" class="elementsBox"></div>
